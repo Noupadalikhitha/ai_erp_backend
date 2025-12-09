@@ -47,20 +47,30 @@ def upgrade() -> None:
         ('john.doe@erp.com', 'John Doe', role_staff),
         ('jane.smith@erp.com', 'Jane Smith', role_manager),
     ]
-    
-    # Hashed password for 'admin123': '$2b$12$EixZaYVK1fsbw1ZfbX3OXePaWxn96p36WQoeG6Lruj3vjPGga31lm'
-    # Hashed password for 'manager123': '$2b$12$4h7HnTBsR8Gzl2h2F8L5wu5xqN8f6q7K2q1D8m9P3r4S5t6U7v8W'
-    # Hashed password for 'staff123': '$2b$12$9i8J7K6L5M4N3O2P1Q0R9S8T7U6V5W4X3Y2Z1A0B9C8D7E6F5G'
-    # Hashed password for 'password123': '$2b$12$cJFCy6vHFZFa4GH7ij8k9e4k4p5q6r7s8t9u0v1w2x3y4z5A6B'
-    
+
+    # Generate bcrypt hashes using passlib to ensure compatibility with application
+    from passlib.context import CryptContext
+    pwd_context = CryptContext(schemes=["bcrypt"], deprecated="auto")
+
+    password_map = {
+        'admin@erp.com': 'admin123',
+        'manager@erp.com': 'manager123',
+        'staff@erp.com': 'staff123',
+        'john.doe@erp.com': 'password123',
+        'jane.smith@erp.com': 'password123',
+    }
+
+    hashed_map = {email: pwd_context.hash(pw) for email, pw in password_map.items()}
+
     for email, full_name, role_id in users_data:
+        hashed_password = hashed_map.get(email) or pwd_context.hash('password123')
         conn.execute(sa.text("""
             INSERT INTO users (email, hashed_password, full_name, is_active, role_id, created_at)
             VALUES (:email, :hashed_password, :full_name, true, :role_id, NOW())
             ON CONFLICT (email) DO NOTHING
         """), {
             "email": email,
-            "hashed_password": "$2b$12$cJFCy6vHFZFa4GH7ij8k9e4k4p5q6r7s8t9u0v1w2x3y4z5A6B",  # password123
+            "hashed_password": hashed_password,
             "full_name": full_name,
             "role_id": role_id
         })
