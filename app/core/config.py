@@ -24,6 +24,11 @@ class Settings(BaseSettings):
     UPLOAD_DIR: str = "uploads"
     MAX_UPLOAD_SIZE: int = 10 * 1024 * 1024  # 10MB
     
+    # Logging
+    LOG_LEVEL: str = "INFO"
+    LOG_FORMAT: str = "text"  # "text" or "json"
+    LOG_REQUEST_ID: bool = True  # Enable request ID tracking
+    
     class Config:
         env_file = ".env"
         case_sensitive = True

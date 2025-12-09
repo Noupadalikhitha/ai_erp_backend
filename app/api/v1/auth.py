@@ -1,7 +1,8 @@
-from fastapi import APIRouter, Depends, HTTPException, status
+from fastapi import APIRouter, Depends, HTTPException, status, Request
 from fastapi.security import OAuth2PasswordRequestForm
 from sqlalchemy.orm import Session
 from datetime import timedelta
+import logging
 from app.core.database import get_db
 from app.core.security import verify_password, get_password_hash, create_access_token, is_valid_bcrypt_hash
 from app.core.config import settings
@@ -12,7 +13,12 @@ from app.schemas.auth import Token, UserCreate, UserResponse
 from app.api.v1.dependencies import get_current_user
 
 router = APIRouter()
-logger = get_logger(__name__)
+base_logger = get_logger(__name__)
+
+def get_request_logger(request: Request):
+    """Get logger with request ID context"""
+    request_id = getattr(request.state, 'request_id', 'system')
+    return logging.LoggerAdapter(base_logger, {"request_id": request_id})
 
 @router.get("/roles")
 def get_roles(db: Session = Depends(get_db)):
@@ -74,11 +80,17 @@ def register(user_data: UserCreate, db: Session = Depends(get_db)):
     return user_response
 
 @router.post("/login", response_model=Token)
-def login(form_data: OAuth2PasswordRequestForm = Depends(), db: Session = Depends(get_db)):
+def login(
+    form_data: OAuth2PasswordRequestForm = Depends(), 
+    db: Session = Depends(get_db)
+):
     """
     Login endpoint - Returns JWT token for authenticated users
     Note: OAuth2PasswordRequestForm uses 'username' field, but we accept email as username
     """
+    # Use base logger - request ID will be added by middleware if available
+    logger = base_logger
+    
     # Use email for login (OAuth2PasswordRequestForm.username field accepts email)
     user = db.query(User).filter(User.email == form_data.username).first()
     
@@ -96,7 +108,8 @@ def login(form_data: OAuth2PasswordRequestForm = Depends(), db: Session = Depend
         logger.warning(
             f"Login attempt blocked: malformed password hash detected "
             f"(user_id={user.id}, email={user.email}). "
-            f"User needs password reset."
+            f"User needs password reset.",
+            extra={"user_id": user.id, "user_email": user.email}
         )
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,
@@ -106,7 +119,10 @@ def login(form_data: OAuth2PasswordRequestForm = Depends(), db: Session = Depend
     
     # Verify password - verify_password handles malformed hashes gracefully
     if not verify_password(form_data.password, user.hashed_password):
-        logger.info(f"Login attempt failed: invalid password (user_id={user.id}, email={user.email})")
+        logger.info(
+            f"Login attempt failed: invalid password (user_id={user.id}, email={user.email})",
+            extra={"user_id": user.id, "user_email": user.email}
+        )
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,
             detail="Incorrect email or password",

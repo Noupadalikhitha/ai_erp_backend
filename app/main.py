@@ -6,6 +6,7 @@ from sqlalchemy import create_engine, text
 from app.core.config import settings as _settings
 from app.core.security import is_valid_bcrypt_hash
 from app.core.logging_config import setup_logging, get_logger
+from app.core.middleware import RequestIDMiddleware
 
 # Setup logging
 setup_logging()
@@ -16,6 +17,10 @@ app = FastAPI(
     description="Full-stack ERP with AI capabilities",
     version="1.0.0"
 )
+
+# Request ID middleware (add first for request tracking)
+if settings.LOG_REQUEST_ID:
+    app.add_middleware(RequestIDMiddleware)
 
 # CORS middleware - Allow all origins in development
 # TODO: Restrict to specific origins in production
@@ -41,7 +46,52 @@ async def root():
 
 @app.get("/health")
 async def health():
+    """Health check endpoint"""
     return {"status": "healthy"}
+
+@app.get("/health/detailed")
+async def health_detailed():
+    """Detailed health check with system information"""
+    from app.core.security import is_valid_bcrypt_hash
+    from sqlalchemy import create_engine, text
+    
+    health_info = {
+        "status": "healthy",
+        "service": "AI-Powered ERP System API",
+        "version": "1.0.0"
+    }
+    
+    # Check database connectivity
+    try:
+        engine = create_engine(_settings.DATABASE_URL)
+        with engine.begin() as conn:
+            conn.execute(text("SELECT 1"))
+        health_info["database"] = "connected"
+    except Exception as e:
+        health_info["database"] = f"error: {str(e)}"
+        health_info["status"] = "degraded"
+    
+    # Check password hash health
+    try:
+        engine = create_engine(_settings.DATABASE_URL)
+        with engine.begin() as conn:
+            rows = conn.execute(text("SELECT COUNT(*) FROM users")).scalar()
+            malformed_rows = conn.execute(
+                text("SELECT COUNT(*) FROM users WHERE LENGTH(hashed_password) != 60 OR hashed_password NOT LIKE '$2%'")
+            ).scalar()
+        
+        health_info["password_hashes"] = {
+            "total_users": rows,
+            "malformed_count": malformed_rows,
+            "status": "healthy" if malformed_rows == 0 else "warning"
+        }
+        
+        if malformed_rows > 0:
+            health_info["status"] = "degraded"
+    except Exception as e:
+        health_info["password_hashes"] = f"check_failed: {str(e)}"
+    
+    return health_info
 
 
 @app.on_event("startup")
