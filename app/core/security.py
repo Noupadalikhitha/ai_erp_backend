@@ -6,8 +6,27 @@ from app.core.config import settings
 
 pwd_context = CryptContext(schemes=["bcrypt"], deprecated="auto")
 
+def is_valid_bcrypt_hash(hashed_password: str) -> bool:
+    """
+    Validate that a string is a properly formatted bcrypt hash.
+    Bcrypt hashes should start with $2b$, $2a$, or $2y$ and be exactly 60 characters long.
+    """
+    if not isinstance(hashed_password, str):
+        return False
+    return hashed_password.startswith(('$2b$', '$2a$', '$2y$')) and len(hashed_password) == 60
+
 def verify_password(plain_password: str, hashed_password: str) -> bool:
-    return pwd_context.verify(plain_password, hashed_password)
+    """
+    Verify a plain password against a hashed password.
+    Returns False if the hash is malformed or verification fails.
+    """
+    if not hashed_password or not is_valid_bcrypt_hash(hashed_password):
+        return False
+    try:
+        return pwd_context.verify(plain_password, hashed_password)
+    except (ValueError, TypeError):
+        # Handle malformed bcrypt hash errors gracefully
+        return False
 
 def get_password_hash(password: str) -> str:
     return pwd_context.hash(password)

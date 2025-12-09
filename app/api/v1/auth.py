@@ -79,7 +79,17 @@ def login(form_data: OAuth2PasswordRequestForm = Depends(), db: Session = Depend
     """
     # Use email for login (OAuth2PasswordRequestForm.username field accepts email)
     user = db.query(User).filter(User.email == form_data.username).first()
-    if not user or not verify_password(form_data.password, user.hashed_password):
+    
+    # Check if user exists and password is valid
+    if not user:
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="Incorrect email or password",
+            headers={"WWW-Authenticate": "Bearer"},
+        )
+    
+    # Verify password - verify_password handles malformed hashes gracefully
+    if not verify_password(form_data.password, user.hashed_password):
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,
             detail="Incorrect email or password",
