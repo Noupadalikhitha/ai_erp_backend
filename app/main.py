@@ -13,6 +13,10 @@ app = FastAPI(
 # TODO: Restrict to specific origins in production
 app.add_middleware(
     CORSMiddleware,
+    allow_origins=[
+        "https://frontend-likhitha.vercel.app",
+        "http://localhost:5173"
+    ],
     allow_origins=["*"],  # Allow all origins for development
     allow_credentials=True,
     allow_methods=["*"],  # Allow all methods
