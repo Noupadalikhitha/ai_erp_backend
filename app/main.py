@@ -17,7 +17,7 @@ app.add_middleware(
         "https://frontend-likhitha.vercel.app",
         "http://localhost:5173"
     ],
-    allow_origins=["*"],  # Allow all origins for development
+    # allow_origins=["*"],  # Allow all origins for development (uncomment for broad dev CORS)
     allow_credentials=True,
     allow_methods=["*"],  # Allow all methods
     allow_headers=["*"],   # Allow all headers
