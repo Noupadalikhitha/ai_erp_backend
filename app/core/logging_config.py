@@ -4,9 +4,13 @@ Logging configuration for the application
 import logging
 import sys
 import json
+from contextvars import ContextVar
 from typing import Optional, Dict, Any
 from datetime import datetime
 from app.core.config import settings
+
+# Context variable to store request ID for the current request
+request_id_context: ContextVar[str] = ContextVar('request_id', default='system')
 
 class JSONFormatter(logging.Formatter):
     """Custom JSON formatter for structured logging"""
@@ -19,9 +23,11 @@ class JSONFormatter(logging.Formatter):
             "message": record.getMessage(),
         }
         
-        # Add request_id if present
-        if hasattr(record, 'request_id'):
-            log_data["request_id"] = record.request_id
+        # Add request_id from record or context
+        request_id = getattr(record, 'request_id', None)
+        if request_id is None:
+            request_id = request_id_context.get('system')
+        log_data["request_id"] = request_id
         
         # Add user info if present
         if hasattr(record, 'user_id'):
@@ -64,10 +70,13 @@ def setup_logging(log_level: Optional[str] = None, log_format: Optional[str] = N
         formatter = JSONFormatter()
         log_format_str = None  # JSON formatter handles format
     else:
-        # Text formatter with optional request_id
+        # Text formatter with optional request_id from context
         class TextFormatter(logging.Formatter):
             def format(self, record):
-                request_id = getattr(record, 'request_id', 'system')
+                # Try to get request_id from record, then from context, then default
+                request_id = getattr(record, 'request_id', None)
+                if request_id is None:
+                    request_id = request_id_context.get('system')
                 record.request_id = request_id
                 return super().format(record)
         
@@ -100,27 +109,25 @@ def setup_logging(log_level: Optional[str] = None, log_format: Optional[str] = N
 def get_logger(name: str) -> logging.Logger:
     """
     Get a logger instance for a module.
+    Automatically includes request_id from context if available.
     
     Args:
         name: Logger name (typically __name__)
         
     Returns:
-        Logger instance
+        Logger instance with request_id context support
     """
     logger = logging.getLogger(name)
     
-    # Add default request_id if not set (for non-request contexts)
-    if not hasattr(logger, '_request_id_default'):
-        # Create an adapter that adds default request_id
-        class LoggerAdapter(logging.LoggerAdapter):
-            def process(self, msg, kwargs):
-                if 'extra' not in kwargs:
-                    kwargs['extra'] = {}
-                if 'request_id' not in kwargs['extra']:
-                    kwargs['extra']['request_id'] = 'system'
-                return msg, kwargs
-        
-        return LoggerAdapter(logger, {})
+    # Create an adapter that adds request_id from context
+    class ContextLoggerAdapter(logging.LoggerAdapter):
+        def process(self, msg, kwargs):
+            if 'extra' not in kwargs:
+                kwargs['extra'] = {}
+            # Get request_id from context if not explicitly provided
+            if 'request_id' not in kwargs['extra']:
+                kwargs['extra']['request_id'] = request_id_context.get('system')
+            return msg, kwargs
     
-    return logger
+    return ContextLoggerAdapter(logger, {})
 

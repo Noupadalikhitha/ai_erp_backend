@@ -7,7 +7,7 @@ import logging
 from fastapi import Request
 from starlette.middleware.base import BaseHTTPMiddleware
 from starlette.types import ASGIApp
-from app.core.logging_config import get_logger
+from app.core.logging_config import get_logger, request_id_context
 
 logger = get_logger(__name__)
 
@@ -20,6 +20,9 @@ class RequestIDMiddleware(BaseHTTPMiddleware):
         
         # Add request ID to request state
         request.state.request_id = request_id
+        
+        # Set request ID in context variable for logging
+        token = request_id_context.set(request_id)
         
         # Start time tracking
         start_time = time.time()
@@ -58,6 +61,8 @@ class RequestIDMiddleware(BaseHTTPMiddleware):
                     f"{method} {path} - {status_code} - {duration:.3f}s"
                 )
             
+            # Reset context variable
+            request_id_context.reset(token)
             return response
             
         except Exception as e:
@@ -70,5 +75,7 @@ class RequestIDMiddleware(BaseHTTPMiddleware):
                 f"{request.method} {request.url.path} - Exception - {duration:.3f}s",
                 exc_info=True
             )
+            # Reset context variable even on exception
+            request_id_context.reset(token)
             raise
 
