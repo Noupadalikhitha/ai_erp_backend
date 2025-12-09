@@ -334,3 +334,38 @@ def create_user(
     user_dict["role_name"] = user.role.name if user.role else None
     return UserResponse(**user_dict)
 
+@router.get("/users/password-hash-check")
+def check_password_hashes(
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_active_admin)
+):
+    """
+    Check for users with malformed password hashes.
+    Admin-only endpoint for diagnostics and monitoring.
+    """
+    from app.core.security import is_valid_bcrypt_hash
+    
+    users = db.query(User).all()
+    malformed_users = []
+    valid_count = 0
+    
+    for user in users:
+        if not is_valid_bcrypt_hash(user.hashed_password):
+            malformed_users.append({
+                "id": user.id,
+                "email": user.email,
+                "full_name": user.full_name,
+                "hash_length": len(user.hashed_password) if user.hashed_password else 0,
+                "hash_preview": user.hashed_password[:20] + "..." if user.hashed_password and len(user.hashed_password) > 20 else user.hashed_password
+            })
+        else:
+            valid_count += 1
+    
+    return {
+        "total_users": len(users),
+        "valid_hashes": valid_count,
+        "malformed_hashes": len(malformed_users),
+        "malformed_users": malformed_users,
+        "recommendation": "Run 'python scripts/fix_malformed_hashes.py --dry-run' for details" if malformed_users else "All password hashes are valid"
+    }
+

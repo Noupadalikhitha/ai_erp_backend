@@ -3,14 +3,16 @@ from fastapi.security import OAuth2PasswordRequestForm
 from sqlalchemy.orm import Session
 from datetime import timedelta
 from app.core.database import get_db
-from app.core.security import verify_password, get_password_hash, create_access_token
+from app.core.security import verify_password, get_password_hash, create_access_token, is_valid_bcrypt_hash
 from app.core.config import settings
 from app.core.permissions import get_user_permissions
+from app.core.logging_config import get_logger
 from app.models.user import User, Role
 from app.schemas.auth import Token, UserCreate, UserResponse
 from app.api.v1.dependencies import get_current_user
 
 router = APIRouter()
+logger = get_logger(__name__)
 
 @router.get("/roles")
 def get_roles(db: Session = Depends(get_db)):
@@ -82,6 +84,20 @@ def login(form_data: OAuth2PasswordRequestForm = Depends(), db: Session = Depend
     
     # Check if user exists and password is valid
     if not user:
+        logger.info(f"Login attempt failed: user not found (email: {form_data.username})")
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="Incorrect email or password",
+            headers={"WWW-Authenticate": "Bearer"},
+        )
+    
+    # Check for malformed hash and log warning
+    if not is_valid_bcrypt_hash(user.hashed_password):
+        logger.warning(
+            f"Login attempt blocked: malformed password hash detected "
+            f"(user_id={user.id}, email={user.email}). "
+            f"User needs password reset."
+        )
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,
             detail="Incorrect email or password",
@@ -90,6 +106,7 @@ def login(form_data: OAuth2PasswordRequestForm = Depends(), db: Session = Depend
     
     # Verify password - verify_password handles malformed hashes gracefully
     if not verify_password(form_data.password, user.hashed_password):
+        logger.info(f"Login attempt failed: invalid password (user_id={user.id}, email={user.email})")
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,
             detail="Incorrect email or password",

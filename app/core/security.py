@@ -3,7 +3,9 @@ from typing import Optional
 from jose import JWTError, jwt
 from passlib.context import CryptContext
 from app.core.config import settings
+from app.core.logging_config import get_logger
 
+logger = get_logger(__name__)
 pwd_context = CryptContext(schemes=["bcrypt"], deprecated="auto")
 
 def is_valid_bcrypt_hash(hashed_password: str) -> bool:
@@ -20,12 +22,23 @@ def verify_password(plain_password: str, hashed_password: str) -> bool:
     Verify a plain password against a hashed password.
     Returns False if the hash is malformed or verification fails.
     """
-    if not hashed_password or not is_valid_bcrypt_hash(hashed_password):
+    if not hashed_password:
+        logger.debug("Password verification failed: empty hash provided")
         return False
+    
+    if not is_valid_bcrypt_hash(hashed_password):
+        logger.warning(
+            f"Password verification failed: malformed bcrypt hash detected "
+            f"(length={len(hashed_password) if hashed_password else 0}, "
+            f"starts_with={hashed_password[:7] if len(hashed_password) >= 7 else 'N/A'})"
+        )
+        return False
+    
     try:
         return pwd_context.verify(plain_password, hashed_password)
-    except (ValueError, TypeError):
+    except (ValueError, TypeError) as e:
         # Handle malformed bcrypt hash errors gracefully
+        logger.warning(f"Password verification error: {str(e)}")
         return False
 
 def get_password_hash(password: str) -> str:

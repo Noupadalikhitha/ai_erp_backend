@@ -4,15 +4,12 @@ from .core.config import settings
 from .api.v1 import api_router
 from sqlalchemy import create_engine, text
 from app.core.config import settings as _settings
-from passlib.context import CryptContext
+from app.core.security import is_valid_bcrypt_hash
+from app.core.logging_config import setup_logging, get_logger
 
-pwd_context = CryptContext(schemes=["bcrypt"], deprecated="auto")
-
-
-def _is_valid_bcrypt(h: str | None) -> bool:
-    if not isinstance(h, str):
-        return False
-    return h.startswith(('$2b$', '$2a$', '$2y$')) and len(h) == 60
+# Setup logging
+setup_logging()
+logger = get_logger(__name__)
 
 app = FastAPI(
     title="AI-Powered ERP System",
@@ -57,14 +54,24 @@ def startup_checks():
     try:
         engine = create_engine(_settings.DATABASE_URL)
         with engine.begin() as conn:
-            rows = conn.execute(text("SELECT hashed_password FROM users LIMIT 1000")).fetchall()
-        malformed = 0
-        for (h,) in rows:
-            if not _is_valid_bcrypt(h):
-                malformed += 1
-        if malformed:
-            print(f"WARNING: detected {malformed} malformed bcrypt hashes (first 1000 rows checked)")
-    except Exception:
-        # Avoid raising on startup; just print a short message for diagnostics
-        print("Startup hash check skipped: could not query users table")
+            rows = conn.execute(text("SELECT id, email, hashed_password FROM users LIMIT 1000")).fetchall()
+        malformed_users = []
+        for user_id, email, h in rows:
+            if not is_valid_bcrypt_hash(h):
+                malformed_users.append({"id": user_id, "email": email})
+        
+        if malformed_users:
+            logger.warning(
+                f"Detected {len(malformed_users)} users with malformed bcrypt hashes "
+                f"(first 1000 rows checked). "
+                f"Run 'python scripts/fix_malformed_hashes.py --dry-run' for details."
+            )
+            # Log first few affected users for visibility
+            for user in malformed_users[:5]:
+                logger.debug(f"Malformed hash detected: user_id={user['id']}, email={user['email']}")
+        else:
+            logger.info("Password hash validation check passed - all hashes are valid")
+    except Exception as e:
+        # Avoid raising on startup; log error for diagnostics
+        logger.warning(f"Startup hash check skipped: could not query users table - {str(e)}")
 
