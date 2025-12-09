@@ -1,7 +1,7 @@
 """Add dummy data for development and testing
 
 Revision ID: 001_add_dummy_data
-Revises: 000_initial_schema
+Revises: 000_create_initial_schema
 Create Date: 2025-12-09 00:00:00.000000
 
 """
@@ -12,7 +12,7 @@ import sqlalchemy as sa
 
 # revision identifiers, used by Alembic.
 revision: str = '001_add_dummy_data'
-down_revision: str = '000_initial_schema'
+down_revision: str = '000_create_initial_schema'
 branch_labels: Union[str, Sequence[str], None] = None
 depends_on: Union[str, Sequence[str], None] = None
 
